@@ -1,10 +1,10 @@
 import os
 import unkey
 
-from pydantic import BaseModel, Extra, root_validator, ValidationError
-from typing import Annotated, Any, Dict, List, Optional
-from fastapi import APIRouter, Body, Header
-from pinecone import Pinecone, ServerlessSpec, QueryResponse
+from pydantic import BaseModel, root_validator
+from typing import  Any, Dict, Optional
+from fastapi import APIRouter, Header
+from pinecone import Pinecone
 from ..dependencies import create_embeddings, split_text
 
 router = APIRouter()
@@ -21,7 +21,7 @@ class Metadata(BaseModel):
     id: str
 
     class Config:
-        extra = Extra.allow
+        extra = "allow"
 
 
 class UpsertInput(BaseModel):
