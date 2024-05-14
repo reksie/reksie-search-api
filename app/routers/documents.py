@@ -48,7 +48,7 @@ class QueryInput(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 class PromptInput(BaseModel):
-    query: str
+    prompt: str
     stream: Optional[bool] = False
 
 
@@ -167,7 +167,7 @@ async def prompt_completion(
     index = pc.Index("reksie-search-dev")
 
     dense_vector, sparse_vector = await create_embeddings(
-        query=input.query, alpha=0.8
+        query=input.prompt, alpha=0.8
     )
 
     results = index.query(
@@ -186,7 +186,7 @@ async def prompt_completion(
     completion = openai.chat.completions.create(model="gpt-4o", messages=[
         {"role": "system", "content": "Use the following content to answer the prompt"},
         {"role": "system", "content": " ".join([match.metadata["content"] for match in matches if match.metadata and "content" in match.metadata])},
-        {"role": "user", "content": input.query}
+        {"role": "user", "content": input.prompt}
     ], stream=input.stream)
 
     if input.stream:
