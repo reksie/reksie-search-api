@@ -192,4 +192,5 @@ async def prompt_completion(
     if input.stream:
         return StreamingResponse(generate_stream(completion), media_type="text/event-stream")
 
+
     return {"completion": completion.choices[0].message.content}
