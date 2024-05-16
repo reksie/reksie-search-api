@@ -1,5 +1,7 @@
 import os
+from openai.types.chat import ChatCompletionChunk
 import unkey
+import json
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, root_validator
@@ -58,11 +60,19 @@ def key_extractor(*args: Any, **kwargs: Any) -> Optional[str]:
 
     return None
 
+class EnhancedJSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, ChatCompletionChunk):
+            # Assuming 'ChatCompletionChunk' has a method to_dict() for serialization.
+            # If not, you'll have to manually construct a dictionary that represents the object.
+            return o.to_dict()
+        # Fall back to the super class's default handler for other types
+        return super().default(o)
+
 def generate_stream(response):
     for event in response:
-        if hasattr(event.choices[0].delta, 'content'):
-            current_response = event.choices[0].delta.content
-            yield f"data: {current_response}\n\n"
+        event_json = json.dumps(event, cls=EnhancedJSONEncoder)
+        yield f"data: {event_json}\n\n"
 
 @router.post("/upsert", tags=["documents"])
 # @unkey.protected(os.environ["UNKEY_API_ID"], key_extractor)
@@ -184,7 +194,7 @@ async def prompt_completion(
     ]
 
     completion = openai.chat.completions.create(model="gpt-4o", messages=[
-        {"role": "system", "content": "Use the following content to answer the prompt"},
+        {"role": "system", "content": "Use the following content to answer the prompt. Remember to be concise and informative and do not return any markdown or headers."},
         {"role": "system", "content": " ".join([match.metadata["content"] for match in matches if match.metadata and "content" in match.metadata])},
         {"role": "user", "content": input.prompt}
     ], stream=input.stream)
@@ -193,4 +203,4 @@ async def prompt_completion(
         return StreamingResponse(generate_stream(completion), media_type="text/event-stream")
 
 
-    return {"completion": completion.choices[0].message.content}
+    return {"completion": completion}
