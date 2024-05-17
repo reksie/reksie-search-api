@@ -2,10 +2,12 @@ import os
 from openai.types.chat import ChatCompletionChunk
 import unkey
 import json
+import numpy as np
 
+from enum import Enum
 from dotenv import load_dotenv
 from pydantic import BaseModel, root_validator
-from typing import  Any, Dict, Optional
+from typing import  Any, List, Dict, Optional
 from fastapi import APIRouter, Header
 from fastapi.responses import StreamingResponse
 from pinecone import Pinecone
@@ -23,8 +25,12 @@ class Match(BaseModel):
     score: float
     metadata: Optional[Dict[str, Any]]
 
+class DocumentType(str, Enum):
+    RAG = 'rag'
+    HYBRID = 'hybrid'
 
 class UpsertInput(BaseModel):
+    type: List[DocumentType]
     content: str
     metadata: Optional[Dict[str, Any]]
 
@@ -44,6 +50,7 @@ class DeleteInput(BaseModel):
 
 
 class QueryInput(BaseModel):
+    type: DocumentType
     query: str
     top_k: Optional[int] = None
     alpha: Optional[float] = None
@@ -86,12 +93,15 @@ async def upsert_documents(
     # owner_id = unkey_verification.owner_id
     owner_id = "user_2f4XwosSCKSJ7sS99MOXEayr47q"
     index = pc.Index("reksie-search-dev")
+    hybrid_index = pc.Index("reksie-search-dev-hybrid")
 
     chunks = await split_text(input.content)
     metadata_dict = input.metadata if input.metadata else {}
 
     vectors = []
+    hybrid_vectors = []
 
+    # We will always chunk up the content and store it in the RAG index
     for chunk_index, chunk in enumerate(chunks):
         dense_vector, sparse_vector = await create_embeddings(chunk.page_content)
         vectors.append(
@@ -106,7 +116,27 @@ async def upsert_documents(
             }
         )
 
+    # If the document type is hybrid, we will also store the full content in the hybrid index
+    # This is useful for when we want to retrieve the full content of the document
+    if DocumentType.HYBRID in input.type:
+        response = openai.embeddings.create(input=input.content, model="text-embedding-3-small")
+        dense_vector = response.data[0].embedding
+        _, sparse_vector = await create_embeddings(input.content)
+        hybrid_vectors.append(
+            {
+                "id": f"{owner_id}#{metadata_dict.get('id')}",
+                "values": dense_vector,
+                "sparse_values": sparse_vector,
+                "metadata": {
+                    **metadata_dict,
+                    "content": input.content,
+                },
+            }
+        )
+
+    # We need to look into calling these upserts in parallel
     index.upsert(vectors, namespace=owner_id)
+    hybrid_index.upsert(hybrid_vectors, namespace=owner_id)
 
     return {"status": "success"}
 
@@ -143,12 +173,20 @@ async def query_documents(
     # owner_id = unkey_verification.owner_id
     owner_id = "user_2f4XwosSCKSJ7sS99MOXEayr47q"
     index = pc.Index("reksie-search-dev")
+
+    if input.type == DocumentType.HYBRID:
+        index = pc.Index("reksie-search-dev-hybrid")
+
     top_k = input.top_k if input.top_k else 3
     alpha = input.alpha if input.alpha else 0.8
 
     dense_vector, sparse_vector = await create_embeddings(
         query=input.query, alpha=alpha
     )
+
+    if input.type == DocumentType.HYBRID:
+        response = openai.embeddings.create(input=input.query, model="text-embedding-3-small")
+        dense_vector = response.data[0].embedding
 
     results = index.query(
         namespace=owner_id,
