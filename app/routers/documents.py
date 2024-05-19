@@ -58,6 +58,7 @@ class QueryInput(BaseModel):
 
 class PromptInput(BaseModel):
     prompt: str
+    system_prompt: Optional[str] = None
     stream: Optional[bool] = False
 
 
@@ -231,8 +232,10 @@ async def prompt_completion(
         for match in results.get("matches", [])
     ]
 
+    system_prompt = input.system_prompt if input.system_prompt else "Do your best to give an explanation or answer the following question based on the user prompt given and the information provided in the system prompt."
+
     completion = openai.chat.completions.create(model="gpt-4o", messages=[
-        {"role": "system", "content": "Use the following content to answer the prompt. Remember to be concise and informative and do not return any markdown or headers."},
+        {"role": "system", "content": system_prompt},
         {"role": "system", "content": " ".join([match.metadata["content"] for match in matches if match.metadata and "content" in match.metadata])},
         {"role": "user", "content": input.prompt}
     ], stream=input.stream)
