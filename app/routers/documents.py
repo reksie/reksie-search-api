@@ -60,6 +60,7 @@ class PromptInput(BaseModel):
     prompt: str
     system_prompt: Optional[str] = None
     stream: Optional[bool] = False
+    model: Optional[str] = "gpt-3.5-turbo"
 
 
 def key_extractor(*args: Any, **kwargs: Any) -> Optional[str]:
@@ -234,7 +235,7 @@ async def prompt_completion(
 
     system_prompt = input.system_prompt if input.system_prompt else "Do your best to give an explanation or answer the following question based on the user prompt given and the information provided in the system prompt."
 
-    completion = openai.chat.completions.create(model="gpt-4o", messages=[
+    completion = openai.chat.completions.create(model=input.model, messages=[
         {"role": "system", "content": system_prompt},
         {"role": "system", "content": " ".join([match.metadata["content"] for match in matches if match.metadata and "content" in match.metadata])},
         {"role": "user", "content": input.prompt}
